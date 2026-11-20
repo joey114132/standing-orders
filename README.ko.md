@@ -53,7 +53,8 @@ claude plugin install standing-orders@standing-orders
 
 설치한 뒤 Claude Code 를 다시 시작하거나 `/reload-plugins` 를 실행한다. Claude Code 가 보는 PATH 에 `python3`(3.9
 이상)가 있어야 하고 다른 의존성은 없다. Linux 와 Claude Code 2.1.328, 2.1.329 에서 만들고 시험했다. 테스트는 CI 에서
-macOS 로도 돌린다. Windows 는 아직 지원하지 않는다. plugin 없이 설치하는 방법은
+macOS 와 Windows 로도 돌린다. Windows 에서는 hook 이 Git Bash 로 돈다. Git Bash 가 깔려 있으면 Claude Code 가 hook
+명령에 그것을 쓴다. 다만 실제 Windows 설치본에서 hook 배선까지 돌려 보지는 못했다. plugin 없이 설치하는 방법은
 [영문 README](README.md#install) 에 있다.
 
 ## 2분 만에 써 보기
@@ -144,7 +145,8 @@ Claude 에게 `scan` 이나 `reach` 를 시켰을 때 나오는 출력도 마찬
 정규식으로 완전히 막을 수는 없으니 출력을 다른 곳에 붙이기 전에 한 번 읽어 본다. 일부 대화 기록을 아예 읽지
 않게 하려면 `ORDERS_SKIP` 에 정규식을 넣는다. 이 정규식은 대화 기록의 경로와 비교한다. Claude Code 는 작업 폴더
 경로의 `/` 를 `-` 로 바꿔 대화 기록 폴더 이름을 짓는다. 그래서 `ORDERS_SKIP='-clients-|-personal'` 은 `clients` 나
-`personal` 폴더 아래에서 시작한 세션을 건너뛴다. headless 실행(`claude -p` 와 다른 SDK 진입점)은 읽지 않는다.
+`personal` 폴더 아래에서 시작한 세션을 건너뛴다. headless 실행(`claude -p` 와 다른 SDK 진입점)은 `scan` 과 `reach` 가 읽지 않는다.
+hook 도 `ORDERS_HEADLESS=1` 이 아니면 건너뛴다.
 
 대화 기록 형식은 Claude Code 내부 형식이라 바뀔 수 있다. 바뀌면 `scan` 과 `reach` 가 찾는 양이 줄어든다. hook 은
 대화 기록을 읽지 않으므로 그대로 동작한다.
@@ -157,12 +159,13 @@ Claude 에게 `scan` 이나 `reach` 를 시켰을 때 나오는 출력도 마찬
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | 위아래 두 변수가 없을 때 두 기본값을 함께 옮긴다 |
 | `ORDERS_PROJECTS` | `~/.claude/projects` | Claude Code 대화 기록 위치 |
 | `ORDERS_SKIP` | 없음 | 경로가 이 정규식에 걸리는 대화 기록은 읽지 않는다 |
+| `ORDERS_HEADLESS` | 없음 | `1` 로 두면 headless `claude -p` 실행에도 주입한다 |
 | `XDG_CACHE_HOME` | `~/.cache` | 세션별 상태 폴더의 상위 폴더 |
 
 ## 개발
 
 ```bash
-python3 tests/test_orders.py        # 검사 59개, 의존성 없음
+python3 tests/test_orders.py        # 검사 64개, 의존성 없음
 claude plugin validate . --strict
 ```
 

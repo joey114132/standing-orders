@@ -74,7 +74,7 @@ def setup():
 def run(root, *args, stdin=None, env=None):
     e = {**os.environ, "ORDERS_DIR": str(root / "orders"), "ORDERS_PROJECTS": str(root / "projects"),
          "XDG_CACHE_HOME": str(root / "cache"), "CLAUDE_CODE_ENTRYPOINT": "cli", **(env or {})}
-    return subprocess.run([sys.executable, SCRIPT, *args], input=stdin, capture_output=True, text=True, env=e, timeout=30)
+    return subprocess.run([sys.executable, SCRIPT, *args], input=stdin, capture_output=True, text=True, encoding="utf-8", env=e, timeout=30)
 
 
 def hook(root, prompt, session="s1", cwd="/home/u", args=(), env=None):
@@ -138,17 +138,34 @@ def main():
         (root / f"orders/{name}.md").unlink()
 
     # hook: a pipe or a huge file in the orders folder cannot stall or bloat a prompt
-    os.mkfifo(root / "orders/pipe.md")
+    if hasattr(os, "mkfifo"):                        # not on Windows
+        os.mkfifo(root / "orders/pipe.md")
     (root / "orders/huge.md").write_text("---\nproject: huge\nkeywords: checkout\n---\n" + "z" * 400000, encoding="utf-8")
     quick = hook(root, "checkout", session="b3")
     check("a pipe and an oversized file in the orders folder are skipped", "Staging only" in quick and "huge" not in quick)
-    (root / "orders/pipe.md").unlink()
+    (root / "orders/pipe.md").unlink(missing_ok=True)
     (root / "orders/huge.md").unlink()
 
     # hook: a bad ORDERS_SKIP must not take the hook down, and the transcript commands must say what is wrong
     check("the hook ignores an invalid ORDERS_SKIP", "Staging only" in hook(root, "checkout", session="b4", env={"ORDERS_SKIP": "("}))
     bad = run(root, "scan", "webshop", env={"ORDERS_SKIP": "("})
     check("scan reports an invalid ORDERS_SKIP", bad.returncode != 0 and "ORDERS_SKIP" in bad.stderr)
+
+    # hook: headless runs are skipped unless the user opts in
+    check("ORDERS_HEADLESS=1 lets a headless run receive the orders", "Staging only" in hook(
+        root, "checkout", session="h1", env={"CLAUDE_CODE_ENTRYPOINT": "sdk-cli", "ORDERS_HEADLESS": "1"}))
+
+    # hook: non-ASCII orders survive a console that is not UTF-8 (Windows code pages, a C locale)
+    check("Korean text is written as UTF-8 whatever the console encoding",
+          "맡길게" in hook(root, "checkout", session="h2", env={"PYTHONIOENCODING": "ascii"}))
+
+    # hook: Windows working directories match the paths in the header, whichever slash either side uses
+    (root / "orders/winproj.md").write_text("---\nproject: winproj\npaths: C:\\work\\shop, D:/code/site\n---\n1. **One.** \"x\" (today)\n",
+                                            encoding="utf-8")
+    check("a backslash cwd is under a backslash path", "winproj" in hook(root, "go on", session="w1", cwd="C:\\work\\shop\\api"))
+    check("a backslash cwd is under a forward-slash path", "winproj" in hook(root, "go on", session="w2", cwd="D:\\code\\site"))
+    check("a sibling Windows folder does not match", hook(root, "go on", session="w3", cwd="C:\\work\\shop2") == "")
+    (root / "orders/winproj.md").unlink()
 
     # hook: inject even when the state cannot be saved (injecting every time beats never injecting)
     blocked = root / "not-a-dir"

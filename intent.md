@@ -52,4 +52,5 @@ is in play.
   signal for "this session is about project X"? Check by logging misses, not by guessing.
 - The transcript format is internal to Claude Code. How often does it change, and should `scan` report when it sees
   records it does not understand?
-- Windows: `python3` is often not on PATH there and no test runs on it yet.
+- Windows: the suite runs there in CI and the hooks fall back to `python`, but the wiring has not run on a real install,
+  and without Git Bash the hook commands go to PowerShell, which cannot run them.

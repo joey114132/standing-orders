@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v python3 >/dev/null 2>&1 || { echo 'standing-orders: python3 was not found on PATH' >&2; exit 1; }; python3 \"${CLAUDE_PLUGIN_ROOT}/skills/standing-orders/orders.py\" hook || true",
+            "command": "PY=$(command -v python3 || command -v python) || { echo 'standing-orders: python3 was not found on PATH' >&2; exit 1; }; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/skills/standing-orders/orders.py\" hook || true",
             "timeout": 5
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v python3 >/dev/null 2>&1 || { echo 'standing-orders: python3 was not found on PATH' >&2; exit 1; }; python3 \"${CLAUDE_PLUGIN_ROOT}/skills/standing-orders/orders.py\" hook --after-compact || true",
+            "command": "PY=$(command -v python3 || command -v python) || { echo 'standing-orders: python3 was not found on PATH' >&2; exit 1; }; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/skills/standing-orders/orders.py\" hook --after-compact || true",
             "timeout": 5
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v python3 >/dev/null 2>&1 || { echo 'standing-orders: python3 was not found on PATH' >&2; exit 1; }; python3 \"${CLAUDE_PLUGIN_ROOT}/skills/standing-orders/orders.py\" hook --reset || true",
+            "command": "PY=$(command -v python3 || command -v python) || { echo 'standing-orders: python3 was not found on PATH' >&2; exit 1; }; \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/skills/standing-orders/orders.py\" hook --reset || true",
             "timeout": 5
           }
         ]

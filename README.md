@@ -51,7 +51,8 @@ claude plugin install standing-orders@standing-orders
 
 Restart Claude Code or run `/reload-plugins` afterwards. The plugin needs `python3` (3.9 or newer) on the PATH that
 Claude Code sees and has no other dependencies. It was written and tested on Linux with Claude Code 2.1.328 and 2.1.329,
-and the test suite also runs on macOS in CI. Native Windows is not supported yet.
+and the test suite also runs on macOS and Windows in CI. On Windows the hooks run through Git Bash, which Claude Code
+uses for hook commands when it is installed; the hook wiring itself has not been tried on a real Windows install.
 
 <details>
 <summary>Install without the plugin system</summary>
@@ -170,7 +171,7 @@ token-like strings on a best-effort basis. A regex cannot promise secrecy, so re
 somewhere. To keep some transcripts out of both commands, set `ORDERS_SKIP` to a regular expression matched against the
 transcript path. Claude Code names each transcript folder after the working directory with slashes turned into dashes,
 so `ORDERS_SKIP='-clients-|-personal'` skips sessions started under a `clients` or `personal` folder. Headless runs
-(`claude -p` and other SDK entry points) are ignored.
+(`claude -p` and other SDK entry points) are ignored by `scan`, `reach` and, unless `ORDERS_HEADLESS=1` is set, the hook.
 
 The transcript format is internal to Claude Code and can change. If it does, `scan` and `reach` find less; the hook does
 not read transcripts and keeps working.
@@ -183,12 +184,13 @@ not read transcripts and keeps working.
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Moves both defaults when the two variables around it are unset |
 | `ORDERS_PROJECTS` | `~/.claude/projects` | Where Claude Code keeps transcripts |
 | `ORDERS_SKIP` | unset | Regex; transcripts whose path matches are never read |
+| `ORDERS_HEADLESS` | unset | Set to `1` to inject in headless `claude -p` runs too |
 | `XDG_CACHE_HOME` | `~/.cache` | Parent of the per-session state folder |
 
 ## Development
 
 ```bash
-python3 tests/test_orders.py        # 59 checks, no dependencies
+python3 tests/test_orders.py        # 64 checks, no dependencies
 claude plugin validate . --strict
 ```
 

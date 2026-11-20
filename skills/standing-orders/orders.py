@@ -21,7 +21,7 @@ An orders file is markdown with a small header, in ~/.claude/orders/<project>.md
 
 Environment: ORDERS_DIR (default ~/.claude/orders), ORDERS_PROJECTS (default ~/.claude/projects, where Claude Code
 keeps transcripts), CLAUDE_CONFIG_DIR (moves both defaults), ORDERS_SKIP (regex; transcripts whose path matches are
-never read), XDG_CACHE_HOME.
+never read), ORDERS_HEADLESS (1 = inject in headless `claude -p` runs too), XDG_CACHE_HOME.
 """
 import datetime as dt
 import hashlib
@@ -46,7 +46,7 @@ WINDOW = 12             # scan keeps this many prompts after each mention of the
 NOT_USER = ("Stop hook feedback", "Another Claude session sent a message", "<", "[SYSTEM NOTIFICATION", "[Request interrupted",
             "Skill /", "(Re-invocation of", "Base directory for this skill")      # harness text posed as a user turn
 STATE_DAYS = 30         # per-session state older than this is pruned
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 ORDER_LIKE = re.compile(r"must|always|never|don'?t|do not|\bonly\b|from now|\brule|해야|하지 ?마|말고|금지|무조건|항상|절대|맡길|로 해|만 해|빼지|넣지", re.I)
 USER_REC = re.compile(r'"type":\s*"user"')
 ORDER_LINE = re.compile(r"^(\d+)\.\s+(.+)$", re.M)
@@ -108,8 +108,15 @@ def skip_pattern():
         sys.exit(f"ORDERS_SKIP is not a valid regular expression: {e}")
 
 
+def norm(path: str) -> str:
+    """One spelling for a folder: forward slashes, no trailing slash, and no case on Windows."""
+    path = path.replace("\\", "/").rstrip("/")
+    return path.lower() if os.name == "nt" else path
+
+
 def under(cwd: str, paths: list[str]) -> bool:
-    return any(cwd == d or cwd.startswith(d + "/") for d in paths)
+    cwd = norm(cwd)
+    return any(cwd == d or cwd.startswith(d + "/") for d in map(norm, paths))
 
 
 def render(o: dict, room: int = HOOK_LIMIT) -> str:
@@ -134,8 +141,8 @@ def prune_state() -> None:
 
 
 def hook(after_compact: bool, reset: bool = False) -> int:
-    # headless `claude -p` runs are not the user talking
-    if os.environ.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk"):
+    # headless `claude -p` runs are not the user talking, unless the user asks for the orders there too
+    if os.environ.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk") and os.environ.get("ORDERS_HEADLESS") != "1":
         return 0
     try:
         ev = json.load(sys.stdin)
@@ -374,6 +381,11 @@ def option(args: list[str], flag: str, default: str = "") -> str:
 
 
 def main() -> int:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:                                        # a Windows code page or a C locale must not garble or drop non-ASCII orders
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     args = sys.argv[1:]
     if args[:1] in (["--version"], ["version"]):
         print(__version__)
