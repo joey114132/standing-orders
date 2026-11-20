@@ -195,8 +195,9 @@ def main():
     check("a sibling Windows folder does not match", hook(root, "go on", session="w3", cwd="C:\\work\\shop2") == "")
     (root / "orders/winproj.md").unlink()
     (root / "orders/posix.md").write_text("---\nproject: posix\npaths: /srv/a/b\n---\n1. **One.** \"x\" (today)\n", encoding="utf-8")
-    check("a POSIX folder whose name contains a backslash is not confused with a subfolder",
-          hook(root, "go on", session="w4", cwd="/srv/a\\b") == "")
+    if os.name != "nt":                              # on Windows a backslash is a separator, so this is a subfolder there
+        check("a POSIX folder whose name contains a backslash is not confused with a subfolder",
+              hook(root, "go on", session="w4", cwd="/srv/a\\b") == "")
     check("a cwd with .. in it is resolved before matching", "posix" in hook(root, "go on", session="w5", cwd="/srv/a/c/../b/src"))
     (root / "orders/posix.md").unlink()
 
