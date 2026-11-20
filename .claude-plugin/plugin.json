@@ -1,0 +1,22 @@
+{
+  "name": "standing-orders",
+  "displayName": "Standing Orders",
+  "version": "0.1.0",
+  "description": "Keeps each project's user orders and decisions in one short file, in the user's own words, and puts that file back into Claude's context when the project comes up and after every compaction. Includes a transcript scanner that lists what you already told Claude and a checker that a plan has a line for every order.",
+  "author": {
+    "name": "joey114132"
+  },
+  "homepage": "https://github.com/joey114132/standing-orders",
+  "repository": "https://github.com/joey114132/standing-orders",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "context",
+    "compaction",
+    "hooks",
+    "skills",
+    "instructions",
+    "decisions",
+    "claude-code"
+  ]
+}

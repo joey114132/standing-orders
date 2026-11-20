@@ -1,0 +1,15 @@
+{
+  "name": "standing-orders",
+  "description": "Standing Orders for Claude Code: per-project files of the user's orders, injected when the project comes up and after compaction.",
+  "owner": {
+    "name": "joey114132"
+  },
+  "plugins": [
+    {
+      "name": "standing-orders",
+      "source": "./",
+      "description": "Per-project files of the user's orders and decisions, injected by a hook when the project comes up and after every compaction, with a transcript scanner and a plan checker.",
+      "category": "productivity"
+    }
+  ]
+}
