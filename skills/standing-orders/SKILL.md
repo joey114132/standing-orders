@@ -45,7 +45,9 @@ It exits 1 and names each order with no `order N:` line. Write `order N: n/a, <w
 
 ## When the user gives a new order or decision
 
-Add it to the project's file in the same turn: a short bold title, their words in quotes, the date. If the words allow
+Add it to the project's file in the same turn: a short bold title, their words in quotes, the date. If the project has
+no file yet, create it first with `orders.py new <project> --keywords "..." --paths <its folder>`, using the words the
+user says for the project, and ask for a keyword only when none is obvious. If the words allow
 more than one reading, add your reading after `Reading:` and tell the user what you assumed. Delete or rewrite the order
 it replaces. An option picked in a question dialog is a decision and is recorded the same way, with the question.
 

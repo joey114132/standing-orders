@@ -45,6 +45,9 @@ def setup():
             "2026-11-18T01:00:33.000Z"),
         rec("user", "checkout key -----BEGIN PRIVATE KEY----- PEMBODYVALUE -----END PRIVATE KEY----- and "
                     "token LETTERSONLYTOKENLETTERSONLYTOKENLETTERS", "2026-11-18T01:00:34.000Z"),
+        rec("user", 'checkout cfg {"password": "abc\'QUOTEMIXVALUE", "token": "ab\\"ESCAPEDTAILVALUE"} and https://USERINFOONLYTOKEN@host/x',
+            "2026-11-18T01:00:34.500Z"),
+        rec("user", "checkout should offer passwordless login and a password reset page", "2026-11-18T01:00:34.700Z"),
         rec("assistant", [{"type": "text", "text": "the password: CLIPPEDSECRET " + "y" * 150}], "2026-11-18T01:00:35.000Z"),
         rec("user", "checkout ok", "2026-11-18T01:00:36.000Z"),
         rec("user", "checkout " + "context " * 40 + "never change live settings", "2026-11-18T01:00:40.000Z"),
@@ -132,10 +135,35 @@ def main():
     (root / "orders/twin-b.md").write_text(two.format(n="twin-b"), encoding="utf-8")
     first_two, second_two = hook(root, "twin 작업", session="b2"), hook(root, "twin 계속", session="b2")
     check("projects that do not fit together arrive on consecutive prompts",
-          len(first_two) <= 10000 and ("twin-a" in first_two) != ("twin-b" in first_two)
-          and ("twin-a" in second_two) != ("twin-b" in second_two) and first_two[:40] != second_two[:40])
+          len(first_two) <= 10000 and first_two.count("## STANDING ORDERS: twin-") == 1
+          and second_two.count("## STANDING ORDERS: twin-") == 1 and first_two[:40] != second_two[:40])
+    check("the prompt that defers a project says so", "twin-" in first_two.split("did not fit")[-1] and "did not fit" in first_two)
+    sent_first = "twin-a" if "## STANDING ORDERS: twin-a" in first_two else "twin-b"
+    held = "twin-b" if sent_first == "twin-a" else "twin-a"
+    (root / f"orders/{sent_first}.md").write_text(two.format(n=sent_first) + "11. **Changed.** \"z\" (today)\n", encoding="utf-8")
+    (root / f"orders/{held}.md").write_text(two.format(n=held) + "11. **Also changed.** \"z\" (today)\n", encoding="utf-8")
+    third = hook(root, "twin 다시", session="b5")          # fresh session: one goes out, the other is deferred
+    fourth_first = "twin-a" if "## STANDING ORDERS: twin-a" in third else "twin-b"
+    other = "twin-b" if fourth_first == "twin-a" else "twin-a"
+    (root / f"orders/{fourth_first}.md").write_text(two.format(n=fourth_first) + "12. **Again.** \"z\" (today)\n", encoding="utf-8")
+    check("a deferred project goes first even when the other one changed again",
+          f"## STANDING ORDERS: {other}" in hook(root, "twin 또", session="b5"))
     for name in ("bigone", "twin-a", "twin-b"):
         (root / f"orders/{name}.md").unlink()
+    (root / "orders/longname.md").write_text("---\nproject: " + "n" * 12000 + "\nkeywords: longname\n---\n1. **One.** \"x\" (today)\n", encoding="utf-8")
+    check("an absurd project name cannot push a message over the limit", 0 < len(hook(root, "longname", session="b6")) <= 10000)
+    (root / "orders/longname.md").unlink()
+    (root / "orders/oneline.md").write_text("---\nproject: oneline\nkeywords: oneline\n---\n1. **One.** " + "w" * 12000 + "\n", encoding="utf-8")
+    one = hook(root, "oneline", session="b7")
+    check("a single enormous line is not sent in pieces", 0 < len(one) <= 10000 and "not shown" in one and "wwwww" not in one)
+    (root / "orders/oneline.md").unlink()
+    for stem in ("dup-1", "dup-2"):
+        (root / f"orders/{stem}.md").write_text(f"---\nproject: dup\nkeywords: dupword\n---\n1. **From {stem}.** \"x\" (today)\n", encoding="utf-8")
+    both = hook(root, "dupword", session="b8")
+    check("two files that claim the same project name are both injected", "From dup-1" in both and "From dup-2" in both)
+    check("and neither comes back on the next prompt", hook(root, "dupword", session="b8") == "")
+    for stem in ("dup-1", "dup-2"):
+        (root / f"orders/{stem}.md").unlink()
 
     # hook: a pipe or a huge file in the orders folder cannot stall or bloat a prompt
     if hasattr(os, "mkfifo"):                        # not on Windows
@@ -166,6 +194,11 @@ def main():
     check("a backslash cwd is under a forward-slash path", "winproj" in hook(root, "go on", session="w2", cwd="D:\\code\\site"))
     check("a sibling Windows folder does not match", hook(root, "go on", session="w3", cwd="C:\\work\\shop2") == "")
     (root / "orders/winproj.md").unlink()
+    (root / "orders/posix.md").write_text("---\nproject: posix\npaths: /srv/a/b\n---\n1. **One.** \"x\" (today)\n", encoding="utf-8")
+    check("a POSIX folder whose name contains a backslash is not confused with a subfolder",
+          hook(root, "go on", session="w4", cwd="/srv/a\\b") == "")
+    check("a cwd with .. in it is resolved before matching", "posix" in hook(root, "go on", session="w5", cwd="/srv/a/c/../b/src"))
+    (root / "orders/posix.md").unlink()
 
     # hook: inject even when the state cannot be saved (injecting every time beats never injecting)
     blocked = root / "not-a-dir"
@@ -195,9 +228,11 @@ def main():
     check("scan shows the end of a long prompt", "never change live settings" in out)
     check("scan hides a key value", "PKABCDEFGHIJKLMNOPQR" not in out and "api_key" in out and "abc.def.ghi99" not in out)
     leaked = [x for x in ("QUOTEDKEYVALUE", "URLPASSWORD", "QkFTSUNBVVRIVkFMVUU", "eyJzdWIiOiJKV1RCT0RZ", "PEMBODYVALUE",
-                          "LETTERSONLYTOKEN", "CLIPPEDSECRET") if x in out]
+                          "LETTERSONLYTOKEN", "CLIPPEDSECRET", "QUOTEMIXVALUE", "ESCAPEDTAILVALUE", "USERINFOONLYTOKEN") if x in out]
     check("scan hides quoted, URL, Basic, JWT, PEM, letters-only and clipped secrets" + (f" (leaked: {leaked})" if leaked else ""),
           not leaked)
+    check("ordinary words that contain a secret keyword are left alone",
+          "passwordless login and a password reset page" in out)
     check("scan survives records with a null message or a non-object line", run(root, "scan", "webshop").returncode == 0)
     lines = out.splitlines()
     first_answer = next(i for i, l in enumerate(lines) if "스테이징 먼저" in l)
@@ -211,6 +246,24 @@ def main():
     check("scan prints the newest timestamp for mark", "2026-11-18T01:10:00" in (out.splitlines() or [""])[-1])
 
     # mark: the next scan starts after it
+    tricky = root / "orders/tricky.md"
+    tricky.write_text("---\nproject: tricky\nkeywords: tricky\n---\n1. **One.** \"x\" (today)\nscanned_until: this body line is the user's text\n", encoding="utf-8")
+    run(root, "mark", "tricky", "2026-11-18T01:10:00")
+    marked = tricky.read_text(encoding="utf-8")
+    check("mark never rewrites a body line", "scanned_until: this body line is the user's text" in marked
+          and "scanned_until: 2026-11-18T01:10:00\n---" in marked)
+    tricky.unlink()
+    if hasattr(os, "symlink"):
+        real = root / "elsewhere-linked.md"
+        real.write_text("---\nproject: linked\nkeywords: linked\n---\n1. **One.** \"x\" (today)\n", encoding="utf-8")
+        try:
+            os.symlink(real, root / "orders/linked.md")
+            run(root, "mark", "linked", "2026-11-18T01:10:00")
+            check("mark updates the target of a linked orders file and keeps the link",
+                  (root / "orders/linked.md").is_symlink() and "scanned_until: 2026-11-18T01:10:00" in real.read_text(encoding="utf-8"))
+            (root / "orders/linked.md").unlink()
+        except OSError:
+            pass                                     # Windows without the symlink privilege
     check("mark refuses a date that does not exist", run(root, "mark", "webshop", "2026-13-45T00:00:00").returncode != 0)
     run(root, "mark", "webshop", "2026-11-18T01:10:00")
     check("mark stores scanned_until", "scanned_until: 2026-11-18T01:10:00" in p.read_text(encoding="utf-8"))

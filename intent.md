@@ -32,10 +32,12 @@ is in play.
 - `scan` pages never split records that share a timestamp, because `mark` works on timestamps.
 - Long transcript lines are skipped only when they are tool results; prompts typed with a pasted image are long too.
 - One hook message stays under 10,000 characters, the size Claude Code passes through whole (`HOOK_LIMIT`). A longer
-  orders file is cut with a visible note; projects that do not fit together go out on consecutive prompts.
+  orders file is cut at a line boundary with a visible note; projects that do not fit together go out on consecutive
+  prompts, the held one first, and the message names what was held.
 - Only regular files up to `MAX_FILE` bytes in the orders folder are read, so a pipe or a stray large file cannot stall
   or flood a prompt.
 - `ORDERS_SKIP` is compiled only by the transcript commands; a bad value must not break the hook.
+- `mark` changes only the header, and writes to the target of a linked file so the link survives.
 - No network access and no dependencies beyond the Python standard library.
 
 ## Decisions

@@ -27,6 +27,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import posixpath
 import re
 import sys
 import time
@@ -38,6 +39,7 @@ CONFIG = Path(os.environ.get("CLAUDE_CONFIG_DIR") or HOME / ".claude")
 ORDERS_DIR = Path(os.environ.get("ORDERS_DIR") or CONFIG / "orders")
 PROJECTS = Path(os.environ.get("ORDERS_PROJECTS") or CONFIG / "projects")
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or HOME / ".cache") / "standing-orders"
+RESERVE = 400           # room kept inside the limit for the note that names projects held back for the next prompt
 HOOK_LIMIT = 9500       # Claude Code passes a hook string whole only up to 10,000 characters; longer ones become a file and a preview
 MAX_FILE = 200_000      # bytes; anything bigger in the orders folder is not an orders file and is never read
 MAX_RECORD = 20000      # typed prompts are short; longer transcript lines are tool output
@@ -71,7 +73,9 @@ def load(path: Path) -> dict:
         return [x.strip() for x in meta.get(key, "").split(",") if x.strip()]
 
     body = body.strip()
-    return {"name": meta.get("project", path.stem), "path": path, "body": body, "since": meta.get("scanned_until", ""),
+    # key: the file name, unique in the folder, used for per-session state; name: what the header calls the project
+    return {"key": path.stem, "name": (meta.get("project") or path.stem)[:80], "path": path, "body": body,
+            "since": meta.get("scanned_until", ""),
             "keywords": [k.lower() for k in items("keywords")], "paths": [p.rstrip("/") for p in items("paths")],
             "orders": [(int(n), t) for n, t in ORDER_LINE.findall(body)],
             "digest": hashlib.sha1(body.encode()).hexdigest()[:12]}
@@ -109,24 +113,28 @@ def skip_pattern():
 
 
 def norm(path: str) -> str:
-    """One spelling for a folder: forward slashes, no trailing slash, and no case on Windows."""
-    path = path.replace("\\", "/").rstrip("/")
-    return path.lower() if os.name == "nt" else path
+    """One spelling for a folder. Backslashes are separators only in a Windows path; on POSIX they are ordinary characters."""
+    if not path:
+        return path
+    if os.name == "nt" or re.match(r"[A-Za-z]:[\\/]|\\\\", path):
+        path = path.replace("\\", "/").lower()
+    return posixpath.normpath(path)
 
 
 def under(cwd: str, paths: list[str]) -> bool:
     cwd = norm(cwd)
-    return any(cwd == d or cwd.startswith(d + "/") for d in map(norm, paths))
+    return any(cwd == d or cwd.startswith(d + "/") for d in map(norm, paths) if d)
 
 
 def render(o: dict, room: int = HOOK_LIMIT) -> str:
     head = (f"## STANDING ORDERS: {o['name']} ({len(o['orders'])} orders, the user's words; newest wins)\n"
             f"File: {o['path']}. {INSTRUCTION}\n\n")
     body = o["body"]
-    if len(head) + len(body) > room:                # never cut silently: say how much is missing and where it is
-        keep = body[:max(0, room - len(head) - 160)]
-        keep = keep[:keep.rfind("\n")] if "\n" in keep else keep
-        body = f"{keep}\n[{len(body) - len(keep)} characters not shown: this file is too long for one hook message. Read it, then trim it.]"
+    if len(head) + len(body) > room:                # never cut silently, and never send part of a line
+        note = "\n[{n} characters not shown: this file is too long for one hook message. Read it, then trim it.]"
+        keep = body[:max(0, room - len(head) - len(note) - 10)]
+        keep = keep[:keep.rfind("\n")] if "\n" in keep else ""
+        body = keep + note.format(n=len(body) - len(keep))
     return head + body
 
 
@@ -163,27 +171,35 @@ def hook(after_compact: bool, reset: bool = False) -> int:
         state = {}
     cwd = str(ev.get("cwd", ""))
     if after_compact:
-        due = [o for o in all_orders() if o["name"] in state or under(cwd, o["paths"])]
+        due = [o for o in all_orders() if o["key"] in state or under(cwd, o["paths"])]
     else:
         prompt = ev.get("prompt")
         if not isinstance(prompt, str) or not prompt.strip() or prompt.lstrip().startswith(NOT_USER):
             return 0
         low = prompt.lower()
         # a project already active in this session is refreshed on any prompt once its file changed
-        due = [o for o in all_orders() if state.get(o["name"]) != o["digest"]
-               and (o["name"] in state or any(k in low for k in o["keywords"]) or under(cwd, o["paths"]))]
+        due = [o for o in all_orders() if state.get(o["key"]) != o["digest"]
+               and (o["key"] in state or any(k in low for k in o["keywords"]) or under(cwd, o["paths"]))]
     if not due:
         return 0
-    parts, used = [], 0
+    due.sort(key=lambda o: state.get(o["key"]) != "")       # a project that was held back last time goes first
+    parts, used, held = [], 0, []
     for o in due:
-        if parts and len(render(o)) + 2 > HOOK_LIMIT - used:
-            state[o["name"]] = ""                   # does not fit beside the others: it stays due and goes out on the next prompt
+        gap = 2 if parts else 0
+        if parts and len(render(o)) + gap > HOOK_LIMIT - RESERVE - used:
+            state[o["key"]] = ""                    # does not fit beside the others: it stays due for the next prompt
+            held.append(o)
             continue
-        parts.append(render(o, HOOK_LIMIT - used))
-        used += len(parts[-1]) + 2
-        state[o["name"]] = o["digest"]
+        parts.append(render(o, HOOK_LIMIT - RESERVE - used - gap))
+        used += len(parts[-1]) + gap
+        state[o["key"]] = o["digest"]
+    if held:
+        parts.append((f"[Standing orders for {', '.join(o['name'] for o in held)} did not fit in this message and arrive with "
+                      f"the next prompt. If this prompt is about them, read {', '.join(str(o['path']) for o in held)} first.]")[:RESERVE - 2])
     event = "SessionStart" if after_compact else "UserPromptSubmit"
-    print(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": "\n\n".join(parts)}}, ensure_ascii=False))
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": "\n\n".join(parts)[:HOOK_LIMIT + RESERVE]}},
+                     ensure_ascii=False))
+    sys.stdout.flush()
     try:
         CACHE.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state))
@@ -194,17 +210,18 @@ def hook(after_compact: bool, reset: bool = False) -> int:
 
 
 SECRET_KEY = r"pwd|password|passwd|비밀번호|비번|api[_-]?key|api[_-]?secret|secret[_-]?key|secret|token|authorization"
+QUOTED = "\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'"     # a quoted string, escaped quotes included
 
 
 def mask(text: str) -> str:
     """Best-effort redaction for text that is about to be printed. A regex cannot promise secrecy."""
-    text = re.sub(r"-----BEGIN [A-Z ]+-----.*?-----END [A-Z ]+-----", "[redacted key]", text, flags=re.S)
-    text = re.sub(r"(://[^\s/:@]+:)[^\s/@]+@", r"\1[redacted]@", text)                       # user:password@host
+    if "-----END" in text:                          # without an END there is nothing to pair, and the lazy scan would be quadratic
+        text = re.sub(r"-----BEGIN [A-Z ]+-----.*?-----END [A-Z ]+-----", "[redacted key]", text, flags=re.S)
+    text = re.sub(r"://[^\s/@]+@", "://[redacted]@", text)                                     # any userinfo in a URL
     text = re.sub(r"(?i)\b(basic|bearer)\s+[A-Za-z0-9+/=._~-]{6,}", r"\1 [redacted]", text)
-    text = re.sub(r"(?i)([\"']?(?:" + SECRET_KEY + r")[\"']?\s*[:=]\s*)([\"'])[^\"']*\2", r"\1\2[redacted]\2", text)   # "key": "value"
-    text = re.sub(r"(?i)\b(pwd|password|passwd|비밀번호|비번)(\s*[:=]?\s*)(?![\"'\[])\S+", r"\1\2[redacted]", text)
-    text = re.sub(r"(?i)\b(api[_-]?key|api[_-]?secret|secret[_-]?key|secret|token|authorization)(\s*[:=]\s*|\s+(?=\S*\d))(?![\"'\[])\S+",
-                  r"\1\2[redacted]", text)
+    text = re.sub(r"(?i)([\"']?\b(?:" + SECRET_KEY + r")[\"']?\s*[:=]\s*)(?:" + QUOTED + ")", r'\1"[redacted]"', text)
+    # a bare key needs a separator, or a following word with a digit in it, so "passwordless login" is left alone
+    text = re.sub(r"(?i)\b(" + SECRET_KEY + r")(\s*[:=]\s*|\s+(?=\S*\d))(?![\"'\[])\S+", r"\1\2[redacted]", text)
     text = re.sub(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}", "[redacted]", text)        # JWT
     text = re.sub(r"\b(?=[A-Za-z0-9_\-]*\d)[A-Za-z0-9_\-]{24,}\b", "[redacted]", text)
     return re.sub(r"\b[A-Za-z0-9]{32,}\b", "[redacted]", text)
@@ -313,17 +330,16 @@ def mark(name: str, stamp: str) -> int:
     if not ok:
         sys.exit("timestamp must be a real UTC time like 2026-11-18T01:05:00, as scan prints it")
     o = find(name)
-    text = o["path"].read_text(encoding="utf-8")
+    target = o["path"].resolve()                    # a linked orders file stays a link; its target is what changes
+    text = target.read_text(encoding="utf-8")
     if not (text.startswith("---\n") and "\n---\n" in text[4:]):
         sys.exit(f"{o['path']} has no closed header (--- ... ---) to hold scanned_until")
+    head, _, body = text[4:].partition("\n---\n")       # only the header is touched; the body is the user's text
     line = f"scanned_until: {stamp}"
-    if re.search(r"(?m)^scanned_until:.*$", text):
-        text = re.sub(r"(?m)^scanned_until:.*$", line, text, count=1)
-    else:
-        text = text.replace("\n---\n", f"\n{line}\n---\n", 1)
-    tmp = o["path"].with_name(o["path"].name + ".tmp")          # write beside it, then swap: a crash never leaves half a file
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, o["path"])
+    kept = [h for h in head.split("\n") if not h.startswith("scanned_until:")]
+    tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")   # write beside it, then swap: a crash never leaves half a file
+    tmp.write_text("---\n" + "\n".join(kept + [line]) + "\n---\n" + body, encoding="utf-8")
+    os.replace(tmp, target)
     print(f"{o['name']}: {line}")
     return 0
 

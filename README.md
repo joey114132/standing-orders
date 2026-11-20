@@ -51,8 +51,9 @@ claude plugin install standing-orders@standing-orders
 
 Restart Claude Code or run `/reload-plugins` afterwards. The plugin needs `python3` (3.9 or newer) on the PATH that
 Claude Code sees and has no other dependencies. It was written and tested on Linux with Claude Code 2.1.328 and 2.1.329,
-and the test suite also runs on macOS and Windows in CI. On Windows the hooks run through Git Bash, which Claude Code
-uses for hook commands when it is installed; the hook wiring itself has not been tried on a real Windows install.
+and the test suite also runs on macOS and Windows in CI. On Windows the hooks need Git Bash, which Claude Code uses for
+hook commands when it is installed, and a real Python: if `python3` is only the Microsoft Store placeholder, install
+Python or turn that alias off. The hook wiring itself has not been tried on a real Windows install.
 
 <details>
 <summary>Install without the plugin system</summary>
@@ -85,10 +86,12 @@ already has a `hooks` section, add these entries to its existing arrays instead 
 
    > For the webshop project: deploy to staging only, never to production. Save that as a standing order with the keywords "webshop" and "checkout".
 
-   Claude creates `~/.claude/orders/webshop.md` with your sentence quoted and dated. You can also call the skill
-   directly with `/standing-orders:standing-orders`.
-2. Open a new session and type a prompt that contains a keyword, such as "the checkout total is off by a cent".
-3. Ask "which standing orders do you have for this project?" Claude answers from the injected block without opening a file.
+   Claude creates `~/.claude/orders/webshop.md` with your sentence quoted and dated, and may ask your permission to
+   run the tool and write the file. If it does not pick the skill up by itself, start the message with
+   `/standing-orders:standing-orders`.
+2. Open a new session and ask "for the checkout work, which standing orders do you have?" The word "checkout" makes
+   the hook inject the file before Claude reads the question, so the answer comes from context that a new session
+   would otherwise not have.
 
 ## Start a project file from your history
 
@@ -109,11 +112,12 @@ orders mark webshop 2026-03-20T09:41:07   # the timestamp scan printed; the next
 ```
 
 `scan` reads only sessions that mention the project. In each one it keeps every prompt that mentions it and the twelve
-prompts that follow, then prints 150 candidates at a time, oldest first; `mark` moves the starting point. `=` means the
+prompts that follow, then prints 150 candidates at a time (a few more when several share a timestamp), oldest first;
+`mark` moves the starting point. `=` means the
 text already appears inside a quote in the file, which is a substring test and only a hint. `*` reads like an order. A
 short reply such as "yes" or "B" is printed with the end of the assistant message before it, because on its own it means
 nothing. Answers you picked in a question dialog are included with their question. `reach` lists each distinct prompt of
-up to 600 characters once.
+up to 600 characters once and shows its first 200 characters.
 
 A finished file looks like [examples/webshop.md](examples/webshop.md). Each order is a short bold title, your words in
 quotes, and the date. Anything the assistant infers beyond the quote goes after `Reading:`, so you can always tell your
@@ -160,7 +164,8 @@ in `~/.cache/standing-orders`.
 
 An orders file is injected into Claude's context, so its text reaches the model provider with the rest of your
 conversation, exactly like `CLAUDE.md`. The same holds for `scan` and `reach` output when you ask Claude to run them.
-Keep credentials out of orders files: `list`, `check` and the hook print them as they are.
+Keep credentials out of orders files: the hook prints them as they are, `list` prints their header and `check`
+prints the start of any order a plan skipped.
 
 An orders file is also an instruction to Claude. Put only files you wrote or reviewed in the orders folder, and do not
 link it to a file someone else controls.
@@ -170,7 +175,7 @@ passwords, key and token assignments, bearer and basic headers, credentials in U
 token-like strings on a best-effort basis. A regex cannot promise secrecy, so read the output before you paste it
 somewhere. To keep some transcripts out of both commands, set `ORDERS_SKIP` to a regular expression matched against the
 transcript path. Claude Code names each transcript folder after the working directory with slashes turned into dashes,
-so `ORDERS_SKIP='-clients-|-personal'` skips sessions started under a `clients` or `personal` folder. Headless runs
+so `ORDERS_SKIP='-(clients|personal)(-|[/\\])'` skips sessions started in or under a `clients` or `personal` folder. Headless runs
 (`claude -p` and other SDK entry points) are ignored by `scan`, `reach` and, unless `ORDERS_HEADLESS=1` is set, the hook.
 
 The transcript format is internal to Claude Code and can change. If it does, `scan` and `reach` find less; the hook does
@@ -190,7 +195,7 @@ not read transcripts and keeps working.
 ## Development
 
 ```bash
-python3 tests/test_orders.py        # 64 checks, no dependencies
+python3 tests/test_orders.py        # 75 checks, no dependencies
 claude plugin validate . --strict
 ```
 

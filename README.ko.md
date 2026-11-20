@@ -53,8 +53,9 @@ claude plugin install standing-orders@standing-orders
 
 설치한 뒤 Claude Code 를 다시 시작하거나 `/reload-plugins` 를 실행한다. Claude Code 가 보는 PATH 에 `python3`(3.9
 이상)가 있어야 하고 다른 의존성은 없다. Linux 와 Claude Code 2.1.328, 2.1.329 에서 만들고 시험했다. 테스트는 CI 에서
-macOS 와 Windows 로도 돌린다. Windows 에서는 hook 이 Git Bash 로 돈다. Git Bash 가 깔려 있으면 Claude Code 가 hook
-명령에 그것을 쓴다. 다만 실제 Windows 설치본에서 hook 배선까지 돌려 보지는 못했다. plugin 없이 설치하는 방법은
+macOS 와 Windows 로도 돌린다. Windows 에서는 Git Bash 가 있어야 한다. Git Bash 가 깔려 있으면 Claude Code 가 hook
+명령에 그것을 쓴다. Python 도 실제로 깔려 있어야 한다. `python3` 가 Microsoft Store 안내용 껍데기뿐이면 Python 을
+설치하거나 그 alias 를 끈다. 실제 Windows 설치본에서 hook 배선까지 돌려 보지는 못했다. plugin 없이 설치하는 방법은
 [영문 README](README.md#install) 에 있다.
 
 ## 2분 만에 써 보기
@@ -63,10 +64,11 @@ macOS 와 Windows 로도 돌린다. Windows 에서는 hook 이 Git Bash 로 돈�
 
    > webshop 프로젝트는 staging 까지만 배포하고 production 에는 절대 배포하지 마. 이걸 standing order 로 저장해. 낱말은 "webshop", "checkout".
 
-   Claude 가 사용자의 문장을 날짜와 함께 인용해서 `~/.claude/orders/webshop.md` 를 만든다.
-   `/standing-orders:standing-orders` 로 skill 을 직접 부를 수도 있다.
-2. 새 세션을 열고 낱말이 들어간 프롬프트를 친다. 예를 들면 "checkout 합계가 1센트 틀려"이다.
-3. "이 프로젝트의 standing order 가 뭐야?"라고 묻는다. Claude 는 파일을 열지 않고 주입된 블록을 보고 답한다.
+   Claude 가 사용자의 문장을 날짜와 함께 인용해서 `~/.claude/orders/webshop.md` 를 만든다. 도구를 실행하고 파일을
+   쓰기 전에 허락을 물을 수 있다. Claude 가 skill 을 스스로 쓰지 않으면 메시지를
+   `/standing-orders:standing-orders` 로 시작한다.
+2. 새 세션을 열고 "checkout 작업에 대해 네가 가진 standing order 가 뭐야?"라고 묻는다. "checkout"이라는 낱말 때문에
+   Claude 가 질문을 읽기 전에 hook 이 파일을 넣는다. 그래서 새 세션에는 원래 없었을 문맥으로 답한다.
 
 ## 지난 대화에서 프로젝트 파일 만들기
 
@@ -87,10 +89,10 @@ orders mark webshop 2026-03-20T09:41:07   # scan 이 찍어 준 시각. 다음 s
 ```
 
 `scan` 은 프로젝트를 언급한 세션만 읽는다. 그 안에서 프로젝트를 언급한 프롬프트와 그 뒤 12개를 남기고, 오래된
-것부터 150개씩 보여 준다. 어디까지 봤는지는 `mark` 로 옮긴다. `=` 는 그 말이 이미 파일의 인용문 안에 있다는
+것부터 150개씩 보여 준다(같은 시각의 것이 여럿이면 조금 더 나온다). 어디까지 봤는지는 `mark` 로 옮긴다. `=` 는 그 말이 이미 파일의 인용문 안에 있다는
 표시인데, 부분 문자열로 비교한 것이라 참고만 한다. `*` 는 지시처럼 읽히는 말이다. "응", "B" 같은 짧은 답은 바로
 앞 assistant 메시지의 끝부분과 함께 나온다. 질문 창에서 고른 답도 질문과 함께 나온다. `reach` 는 600자 이하의
-프롬프트를 중복 없이 한 번씩 보여 준다.
+프롬프트를 중복 없이 한 번씩, 앞 200자만 보여 준다.
 
 완성된 파일은 [examples/webshop.md](examples/webshop.md) 처럼 생겼다. 지시 하나는 굵게 쓴 짧은 제목, 따옴표 안의
 사용자 말, 날짜로 이루어진다. 인용을 넘어서는 해석은 `Reading:` 뒤에 적는다. 그래야 사용자의 결정과 Claude 의
@@ -134,8 +136,8 @@ hook 은 지시를 문맥에 넣을 뿐이고 모델이 따르도록 강제하�
 `~/.cache/standing-orders` 에 있다.
 
 지시 파일은 Claude 의 문맥에 들어가므로 그 글은 대화의 나머지와 함께 모델 제공자에게 간다. `CLAUDE.md` 와 같다.
-Claude 에게 `scan` 이나 `reach` 를 시켰을 때 나오는 출력도 마찬가지다. 지시 파일에는 비밀값을 넣지 않는다. `list`,
-`check`, hook 은 파일 내용을 그대로 출력한다.
+Claude 에게 `scan` 이나 `reach` 를 시켰을 때 나오는 출력도 마찬가지다. 지시 파일에는 비밀값을 넣지 않는다. hook 은
+파일 내용을 그대로 출력하고 `list` 는 머리말을, `check` 는 계획이 빠뜨린 지시의 앞부분을 출력한다.
 
 지시 파일은 Claude 에게 주는 지시이기도 하다. 직접 썼거나 검토한 파일만 지시 폴더에 두고, 남이 고칠 수 있는
 파일로 링크하지 않는다.
@@ -144,8 +146,8 @@ Claude 에게 `scan` 이나 `reach` 를 시켰을 때 나오는 출력도 마찬
 키와 token 대입문, bearer 와 basic 헤더, URL 안의 계정 정보, JWT, PEM 블록, 긴 token 모양 문자열은 가린다. 다만
 정규식으로 완전히 막을 수는 없으니 출력을 다른 곳에 붙이기 전에 한 번 읽어 본다. 일부 대화 기록을 아예 읽지
 않게 하려면 `ORDERS_SKIP` 에 정규식을 넣는다. 이 정규식은 대화 기록의 경로와 비교한다. Claude Code 는 작업 폴더
-경로의 `/` 를 `-` 로 바꿔 대화 기록 폴더 이름을 짓는다. 그래서 `ORDERS_SKIP='-clients-|-personal'` 은 `clients` 나
-`personal` 폴더 아래에서 시작한 세션을 건너뛴다. headless 실행(`claude -p` 와 다른 SDK 진입점)은 `scan` 과 `reach` 가 읽지 않는다.
+경로의 `/` 를 `-` 로 바꿔 대화 기록 폴더 이름을 짓는다. 그래서 `ORDERS_SKIP='-(clients|personal)(-|[/\\])'` 은 `clients` 나
+`personal` 폴더와 그 아래에서 시작한 세션을 건너뛴다. headless 실행(`claude -p` 와 다른 SDK 진입점)은 `scan` 과 `reach` 가 읽지 않는다.
 hook 도 `ORDERS_HEADLESS=1` 이 아니면 건너뛴다.
 
 대화 기록 형식은 Claude Code 내부 형식이라 바뀔 수 있다. 바뀌면 `scan` 과 `reach` 가 찾는 양이 줄어든다. hook 은
@@ -165,7 +167,7 @@ hook 도 `ORDERS_HEADLESS=1` 이 아니면 건너뛴다.
 ## 개발
 
 ```bash
-python3 tests/test_orders.py        # 검사 64개, 의존성 없음
+python3 tests/test_orders.py        # 검사 75개, 의존성 없음
 claude plugin validate . --strict
 ```
 
