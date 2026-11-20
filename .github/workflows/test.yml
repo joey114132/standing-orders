@@ -12,6 +12,12 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.9", "3.12", "3.13"]
+        exclude:
+          - os: ubuntu-latest      # the newest Ubuntu image no longer offers Python 3.9
+            python: "3.9"
+        include:
+          - os: ubuntu-22.04
+            python: "3.9"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
